@@ -20,8 +20,9 @@ class DriverViewSet(viewsets.ModelViewSet):
     permission_classes = [AllowAny]
 
 class BookingViewSet(viewsets.ModelViewSet):
-    queryset = Booking.objects.all().order_by('-created_at')
+    queryset = Booking.objects.all()
     serializer_class = BookingSerializer
+    permission_classes = [AllowAny]
 
     def get_permissions(self):
         if self.action in ['create']:
