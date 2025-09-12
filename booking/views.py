@@ -1,8 +1,9 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny
+from .permissions import CanApproveBooking
 
 from .models import Booking, Car, Driver
 from .serializers import BookingSerializer
@@ -20,26 +21,35 @@ class DriverViewSet(viewsets.ModelViewSet):
     permission_classes = [AllowAny]
 
 class BookingViewSet(viewsets.ModelViewSet):
-    queryset = Booking.objects.all()
     serializer_class = BookingSerializer
-    permission_classes = [AllowAny]
+    permission_classes = [CanApproveBooking]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_superuser or user.groups.filter(name="Manager").exists():
+            return Booking.objects.all()
+        elif user.groups.filter(name="Employee").exists():
+            return Booking.objects.filter(department=user.department)
+        return Booking.objects.none()  
 
     def get_permissions(self):
-        if self.action in ['create']:
-            permission_classes = [IsAuthenticated, IsEmployee]
+        if self.action == 'create':
+            permission_classes = [IsEmployee] 
         elif self.action in ['approve', 'reject']:
-            permission_classes = [IsAuthenticated, IsManagerOrAdmin]
+            permission_classes = [IsManagerOrAdmin]  
         else:
-            permission_classes = [IsAuthenticated]
+            permission_classes = [CanApproveBooking]
         return [p() for p in permission_classes]
 
     def perform_create(self, serializer):
         serializer.save(
             requested_by=self.request.user,
-            department=self.request.user.department
+            department=self.request.user.department,
+            status=Booking.STATUS_PENDING 
         )
 
-    @action(detail=True, methods=['patch'])
+
+    @action(detail=True, methods=['patch'], permission_classes=[IsManagerOrAdmin])
     def approve(self, request, pk=None):
         booking = self.get_object()
         if booking.status != Booking.STATUS_PENDING:
@@ -72,7 +82,7 @@ class BookingViewSet(viewsets.ModelViewSet):
         booking.save()
         return Response(BookingSerializer(booking).data, status=status.HTTP_200_OK)
 
-    @action(detail=True, methods=['patch'])
+    @action(detail=True, methods=['patch'], permission_classes=[IsManagerOrAdmin])
     def reject(self, request, pk=None):
         booking = self.get_object()
         if booking.status != Booking.STATUS_PENDING:
@@ -89,3 +99,13 @@ class BookingViewSet(viewsets.ModelViewSet):
         qs = Booking.objects.filter(department=request.user.department)
         serializer = BookingSerializer(qs, many=True)
         return Response(serializer.data)
+    
+    def perform_update(self, serializer):
+        user = self.request.user
+        status = self.request.data.get("status")
+
+        # Employees cannot change status
+        if not user.is_superuser and status and status != "pending":
+            raise PermissionError("Employees cannot approve or reject bookings.")
+
+        serializer.save()
