@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from .models import Car, Driver, Booking
+from rest_framework.exceptions import ValidationError
 
 class CarSerializer(serializers.ModelSerializer):
     class Meta:
@@ -12,9 +13,17 @@ class DriverSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class BookingSerializer(serializers.ModelSerializer):
-    requested_by = serializers.ReadOnlyField(source='requested_by.username')
 
     class Meta:
         model = Booking
         fields = '__all__'
-        read_only_fields = ['status', 'requested_by', 'created_at',  'updated_at']
+
+    def create(self, validated_data):
+        user = self.context['request'].user
+
+        if user.is_superuser:
+            raise serializers.ValidationError("Superusers cannot create bookings.")    
+
+        validated_data['status'] = 'pending'
+        validated_data['created_by'] = user
+        return super().create(validated_data)
