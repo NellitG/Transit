@@ -16,9 +16,15 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+from notification.views import NotificationViewSet
+
+router = DefaultRouter()
+router.register(r'notifications', NotificationViewSet, basename='notification')
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include('booking.urls')),
     path('api/accounts/', include('accounts.urls')),
+    path('api/', include(router.urls)),
 ]
